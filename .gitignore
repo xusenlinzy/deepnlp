@@ -1,0 +1,21 @@
+/.idea/
+/.vscode/
+/dataset/
+
+# Python:
+*.py[cod]
+*.so
+*.egg
+*.egg-info
+dist
+build
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints
+
+/examples/uie/uie-base/
+/examples/uie/checkpoint/
+/examples/uie/export/
+/examples/uie/results/
+/examples/uie/uie_base_pytorch/
+/examples/uie/data/
