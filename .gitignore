@@ -19,3 +19,5 @@ __pycache__/
 /examples/uie/results/
 /examples/uie/uie_base_pytorch/
 /examples/uie/data/
+/examples/paper/
+/pretrained_models/

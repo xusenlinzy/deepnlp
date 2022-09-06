@@ -2,11 +2,17 @@ import sys
 
 sys.path.append("../..")
 
+import time
+import json
+import tempfile
 import streamlit as st
+import pandas as pd
+import seaborn as sns
 from transformers import BertTokenizerFast
 from torchblocks.tasks.ner import get_auto_ner_model
 from torchblocks.tasks.ner import NERPredictor, EnsembleNERPredictor, PromptNERPredictor, LearNERPredictor, \
     W2NERPredictor
+from torchblocks.utils.app import visualize_ner, download_button, _max_width_, make_color_palette
 
 MODEL_PATH_MAP = {
     "tplinker": '/home/xusenlin/nlp/deepnlp/examples/ner/outputs/cmeee/tplinkerplus/cmeee-tplinkerplus_bert_v0/checkpoint-eval_f1_micro-best',
@@ -30,14 +36,17 @@ schema2prompt = {
     "mic": "微生物类，一般是指细菌、病毒、真菌、支原体、衣原体、螺旋体等八类微生物"
 }
 
-# Using object notation
-model_name = st.sidebar.radio(
-    "模型框架",
-    ("CRF", "SPAN", "TPLINKER", "GLOBAL-POINTER", "MRC", "LEAR", "W2NER", "ENSEMBLE")
-)
-st.sidebar.markdown('---')
-max_seqlen = st.sidebar.number_input('句子最大长度', 0, 512, 512)
-prob = st.sidebar.slider("阈值", min_value=0.0, max_value=1.0, value=0.5, step=0.01)
+LABEL_MAP = {
+    "dis": "疾病",
+    "sym": "症状、临床表现",
+    "pro": "检查、治疗或预防程序",
+    "equ": "检查设备和治疗设备",
+    "dru": "药物",
+    "ite": "医学检验项目",
+    "bod": "身体物质和身体部位",
+    "dep": "部门科室",
+    "mic": "微生物"
+}
 
 
 @st.cache(hash_funcs={BertTokenizerFast: id})
@@ -46,6 +55,8 @@ def load_tokenizer():
 
 
 PREDICTOR_MAP = {"lear": LearNERPredictor, "w2ner": W2NERPredictor, "mrc": PromptNERPredictor}
+labels = LABEL_MAP.values()
+colors = make_color_palette(labels)
 
 
 def load_auto_predictor(model_name):
@@ -73,27 +84,168 @@ def load_ensemble_predictor():
     return EnsembleNERPredictor(predictors)
 
 
-html_tmp = """
-    <div>
-    <h1 style="text-align:center;">中文医学文本命名实体识别</h1>
-    </div>
-"""
-st.markdown(html_tmp, unsafe_allow_html=True)
-st.markdown('---')
+# 设置网页信息 
+st.set_page_config(page_title="NER Demo", page_icon="🚀", layout="wide")
 
-st.subheader("输入文本📖")
-text = st.text_area("请输入待抽取的句子（支持多个句子输入）：")
+_max_width_()
+
+c30, c31, c32 = st.columns([2.5, 1, 3])
+
+with c30:
+    # st.image("logo.png", width=400)
+    st.title("🔑 中文医学命名实体识别")
+    st.header("")
+
+with st.expander("ℹ️ - 关于此APP", expanded=True):
+    st.write(
+        """     
+-   实现多种`NER`模型抽取中文医学文本中的实体。
+-   包含7种`SOTA`模型以及额外的一个集成模型。
+	    """
+    )
+
+    st.markdown("")
+
+st.markdown("")
+st.markdown("## 📌 输入")
+
+with st.form(key="my_form"):
+    ce, c1, _, c2, c3 = st.columns([0.07, 1, 0.07, 5, 0.07])
+
+    with c1:
+        model_name = st.radio(
+            "选择预训练模型",
+            ("CRF", "SPAN", "TPLINKER", "GLOBAL-POINTER", "MRC", "LEAR", "W2NER", "ENSEMBLE"),
+            help="目前支持以上八个模型。",
+        )
+
+        max_seq_len = st.number_input(
+            '句子最大长度',
+            0,
+            512,
+            512,
+            help="模型输入的最大文本长度，超过该长度则截断。")
+
+        prob = st.slider(
+            "阈值",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.5,
+            step=0.01,
+            help="模型输出实体的阈值，当概率值大于该值则输出该实体，仅对于`ensemble`模型。")
+
+    with c2:
+        text = st.text_area(
+            "📖请输入待抽取的句子",
+            height=400, )
+
+        file_upload_exp = st.expander("上传文件")
+        uploaded_file = file_upload_exp.file_uploader("Choose a file", type=".jsonl")
+        submit_button = st.form_submit_button(label="✨ 运行")
+
+if not submit_button:
+    st.stop()
 
 if model_name == "ENSEMBLE":
     ner = load_ensemble_predictor()
 else:
     ner = load_auto_predictor(model_name.lower())
 
-if st.button('运行🚀'):
-    text = text.split('\n')
-    if model_name == "ENSEMBLE":
-        out = ner.predict(text, max_length=max_seqlen, threshold=prob)
-    else:
-        out = ner.predict(text, max_length=max_seqlen)
-    st.json(out)
+if uploaded_file is not None:
+    data = pd.read_json(uploaded_file, lines=True, encoding='utf-8')
+    texts = data.text.values
+    bar = st.progress(0.0)
+    res = []
+    for i, text in enumerate(texts):
+        if model_name == "ENSEMBLE":
+            rlt = ner.predict(text, max_length=max_seq_len, threshold=prob)
+        else:
+            rlt = ner.predict(text, max_length=max_seq_len)
+
+        if model_name == "ENSEMBLE":
+            rlt = {LABEL_MAP[_type]: [
+                {"text": ent["text"], "start": ent["start"], "end": ent["end"],
+                 "probability": float(ent["probability"])}
+                for ent in ents] for _type, ents in rlt.items()}
+        else:
+            rlt = {LABEL_MAP[_type]: [
+                {"text": ent["text"], "start": ent["start"], "end": ent["end"]}
+                for ent in ents] for _type, ents in rlt.items()}
+
+        bar.progress((i + 1) / len(texts))
+        res.append(rlt)
+
+        if i == 0:
+            visualize_ner(text, [rlt], colors=colors)
+    data["prediction"] = res
+    CSVButton1 = download_button(data, "medical_predict.json", "📥 Download (.json)")
     st.stop()
+
+start = time.time()
+if model_name == "ENSEMBLE":
+    rlt = ner.predict(text.split(), max_length=max_seq_len, threshold=prob)
+else:
+    rlt = ner.predict(text.split(), max_length=max_seq_len)
+running_time = time.time() - start
+
+res = []
+for r in rlt:
+    if model_name == "ENSEMBLE":
+        tmp = {LABEL_MAP[_type]: [
+            {"text": ent["text"], "start": ent["start"], "end": ent["end"], "probability": float(ent["probability"])}
+            for ent in ents] for _type, ents in r.items()}
+    else:
+        tmp = {LABEL_MAP[_type]: [
+            {"text": ent["text"], "start": ent["start"], "end": ent["end"]}
+            for ent in ents] for _type, ents in r.items()}
+    res.append(tmp)
+
+st.markdown("## 🎈 结果展示")
+st.header("")
+
+cs, c1, c2, c3, cLast = st.columns([2, 1.5, 1.5, 1.5, 2])
+
+with c1:
+    CSVButton2 = download_button(res, "Data.csv", "📥 Download (.csv)")
+with c2:
+    CSVButton3 = download_button(res, "Data.txt", "📥 Download (.txt)")
+with c3:
+    CSVButton4 = download_button(res, "Data.json", "📥 Download (.json)")
+
+c1, c2, c3 = st.columns([1, 3, 1])
+
+with c2:
+    st.info(f'运行时间：{int(running_time * 1000)} ms', icon="✅")
+    visualize_ner(text, res, colors=colors)
+
+    json_doc_exp = st.expander("JSON")
+    json_doc_exp.json(res)
+
+    dataframe_exp = st.expander("DATAFRAME")
+    columns = ["text", "start", "end", "label", "probability"]
+    for r in res:
+        if model_name == "ENSEMBLE":
+            data = [[t[columns[0]], t[columns[1]], t[columns[2]], k, t[columns[4]]] for k, v in r.items() for t in v]
+            df = pd.DataFrame(data, columns=columns).sort_values(by="probability", ascending=False).reset_index(
+                drop=True)
+        else:
+            data = [[t[columns[0]], t[columns[1]], t[columns[2]], k] for k, v in r.items() for t in v]
+            df = pd.DataFrame(data, columns=columns[:4])
+        df.index += 1
+
+        if model_name == "ENSEMBLE":
+            # Add styling
+            cmGreen = sns.light_palette("green", as_cmap=True)
+            cmRed = sns.light_palette("red", as_cmap=True)
+            df = df.style.background_gradient(
+                cmap=cmGreen,
+                subset=[
+                    "probability",
+                ],
+            )
+            format_dictionary = {
+                "probability": "{:.2%}",
+            }
+
+            df = df.format(format_dictionary)
+        dataframe_exp.table(df)

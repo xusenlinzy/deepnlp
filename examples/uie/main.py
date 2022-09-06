@@ -18,7 +18,8 @@ schema = ["疾病", "症状、临床表现", "身体物质和身体部位", "药
 MODEL_CLASSES = {
     "uie": ("./uie_base_pytorch", None, ["时间", "地点", "人物"]),
     "uie-medical": ("./uie_medical_base_pytorch", None, schema),
-    "uie-medical-finetuned": ("./checkpoint/uie_bert_v0/checkpoint-eval_f1-best", "./export", schema),
+    "uie-medical-finetuned": ("./checkpoint/uie_medical", "./export", schema),
+    "uie-finetuned": ("./checkpoint/uie_medical_cluener", None, schema),
 }
 
 

@@ -9,8 +9,8 @@ from typing import List, Union
 import streamlit as st
 from transformers import BertTokenizerFast
 from torchblocks.tasks.ner import get_auto_ner_model
-from torchblocks.tasks.ner import NERPredictor, EnsembleNERPredictor, PromptNERPredictor, LearNERPredictor, \
-    W2NERPredictor
+from torchblocks.tasks.ner import NERPredictor, EnsembleNERPredictor, PromptNERPredictor
+from torchblocks.tasks.ner import LearNERPredictor, W2NERPredictor
 
 # 应用实例化
 app = FastAPI()

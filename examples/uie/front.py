@@ -1,112 +1,163 @@
 import time
 import requests
-import streamlit as st
 import pandas as pd
-import plotly_express as px
+import streamlit as st
+import seaborn as sns
 
-
-def count_distribution(rlt) -> dict:
-    """ 统计各实体类型的数量
-    """
-    if isinstance(rlt, dict):
-        counts = {k: len(v) for k, v in rlt.items()}
-    else:
-        counts = {}
-        for r in rlt:
-            for k, v in r.items():
-                if k not in counts:
-                    counts[k] = len(v)
-                else:
-                    counts[k] += len(v)
-    return counts
-
+import sys
+sys.path.append("../..")
+from torchblocks.utils.app import visualize_ner, download_button, _max_width_, make_color_palette
 
 # 设置网页信息 
 st.set_page_config(page_title="UIE DEMO", page_icon="🚀", layout="wide")
 
-# st.title('UIE DEMO')
-html_tmp = """
-    <div>
-    <h1 style="text-align:center;">UIE命名实体识别</h1>
-    </div>
-"""
-st.markdown(html_tmp, unsafe_allow_html=True)
-st.markdown('---')
+_max_width_()
 
-st.subheader("🔨定制SCHEMA")
-if candidate := st.checkbox('候选实体类型'):
-    schema_options = st.multiselect('选择预定义的实体类型',
-                                    ["时间", "地点", "人物", "疾病", "症状、临床表现", "身体物质和身体部位", "药物", 
-                                     "检查、治疗或预防程序", "部门科室", "医学检验项目", "微生物", "检查设备和治疗设备"], None)
-else:
-    schema_options = None
-schema = st.text_area("请输入抽取任务的实体类型（使用空格分隔）：")
-schema = (" ".join(schema_options) + " " + schema.strip()) if schema_options is not None else schema.strip()
-# st.text(schema)
+c30, c31, c32 = st.columns([2.5, 1, 3])
 
-st.subheader("📖输入文本")
-text = st.text_area("请输入待抽取的句子：")
+with c30:
+    # st.image("logo.png", width=400)
+    st.title("🔑 UIE命名实体识别")
+    st.header("")
 
-html_tmp = """
-    <div>
-    <h2 style="text-align:center;">配置参数</h2>
-    </div>
-"""
-st.sidebar.markdown(html_tmp, unsafe_allow_html=True)
+with st.expander("ℹ️ - 关于此APP", expanded=True):
 
-# 预训练模型
-st.sidebar.markdown('---')
-model_type = st.sidebar.radio(
-    "预训练模型",
-    ("uie", "uie-medical", "uie-medical-finetuned"),
-)
+    st.write(
+        """     
+-   [UIE(Universal Information Extraction)](https://arxiv.org/pdf/2203.12277.pdf)：Yaojie Lu等人在`ACL-2022`中提出了通用信息抽取统一框架`UIE`。
+-   该框架实现了实体抽取、关系抽取、事件抽取、情感分析等任务的统一建模，并使得不同任务间具备良好的迁移和泛化能力。
+-   为了方便大家使用UIE的强大能力，`PaddleNLP`借鉴该论文的方法，基于`ERNIE 3.0`知识增强预训练模型，训练并开源了首个中文通用信息抽取模型`UIE`。
+-   该模型可以支持不限定行业领域和抽取目标的关键信息抽取，实现零样本快速冷启动，并具备优秀的小样本微调能力，快速适配特定的抽取目标。
+	    """
+    )
 
-st.sidebar.markdown('---')
-max_seq_len = st.sidebar.number_input('句子最大长度', 0, 512, 512)
-prob = st.sidebar.slider("阈值", min_value=0.0, max_value=1.0, value=0.5, step=0.01)
-split = st.sidebar.checkbox('截断句子')
+    st.markdown("")
 
-st.sidebar.markdown('---')
-gpu = st.sidebar.checkbox('使用GPU')
-engine = st.sidebar.checkbox('使用ONNX')
+st.markdown("")
+st.markdown("## 📌 输入")
 
-st.sidebar.markdown('---')
-plot = st.sidebar.checkbox('显示实体标签分布')
+with st.form(key="my_form"):
 
-if st.button('运行🚀') & (text != ''):
-    data_bin = {
-        'model_name': model_type,
-        'input': text.split('\n'),
-        "uie_schema": schema.strip(),
-        "position_prob": prob,
-        "max_seq_len": max_seq_len,
-        "split_sentence": split,
-        "device": "gpu" if gpu else "cpu",
-        "engine": "pytorch" if not engine else "onnx",
-    }
-    start = time.time()
-    rlt = requests.post('http://192.168.0.55:8000/uie', json=data_bin).json()['rlt']
-    # rlt = requests.post('http://192.168.31.38:8000/uie', json=data_bin).json()['rlt']
-    running_time = time.time() - start
-    st.text(f"Runtime for UIE: {running_time}")
-    st.json(rlt)
+    ce, c1, _, c2, c3 = st.columns([0.07, 1, 0.07, 5, 0.07])
 
-    if plot:
-        counts = count_distribution(rlt)
-        counts = pd.DataFrame({"频数": counts.values(), "类型": counts.keys()})
-        fig = px.bar(
-            counts,
-            x="频数",
-            y="类型",
-            orientation="h",
-            title="<b>实体类型分布</b>",
-            color_discrete_sequence=["#4682B4"] * len(counts),
-            template="plotly_white",
+    with c1:
+        model_type = st.radio(
+            "选择预训练模型",
+            ("uie", "uie-medical", "uie-medical-finetuned"),
+            help="""目前支持三个预训练模型，其中uie和uie-medical为没有训练的模型，
+            
+            uie-medical-finetuned为微调之后的模型。""",
         )
-        fig.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=(dict(showgrid=False))
-        )
-        st.plotly_chart(fig, use_container_width=True)
 
+        max_seq_len = st.number_input(
+            '句子最大长度', 
+            0, 
+            512, 
+            512,
+            help="模型输入的最大文本长度，超过该长度则截断。")
+
+        prob = st.slider(
+            "阈值", 
+            min_value=0.0, 
+            max_value=1.0, 
+            value=0.5, 
+            step=0.01,
+            help="模型输出实体的阈值，当实体起、始位置的概率值大于该值则输出。")
+        
+        split = st.checkbox(
+            '截断句子',
+            value=False,
+            help="对于文本长度超过最大长度的句子，将句子切分成多个句子输入模型。")
+
+        gpu = st.checkbox(
+            'GPU',
+            value=True,
+            help="使用GPU可以加快模型的推理速度。")
+        
+        engine = st.checkbox(
+            'ONNX',
+            value=False,
+            help="使用ONNX可以进一步加速模型的推理效率。")
+
+    with c2:
+        exp = st.expander("选择实体类型")
+        schema_options = exp.multiselect('候选类型',
+                                         ["时间", "地点", "人物", "疾病", "症状、临床表现", "身体物质和身体部位", "药物", 
+                                         "检查、治疗或预防程序", "部门科室", "医学检验项目", "微生物", "检查设备和治疗设备"],
+                                         ["时间", "人物"])
+
+        schema = st.text_area(
+            "🔨请输入抽取任务的实体类型（使用空格分隔）",
+            height=100,
+        )
+        
+        schema = (" ".join(schema_options) + " " + schema.strip()).strip() if schema_options is not None else schema.strip()
+
+        text = st.text_area(
+            "📖请输入待抽取的句子",
+            height=200,)
+
+        submit_button = st.form_submit_button(label="✨ 运行")
+
+if not submit_button:
     st.stop()
+
+data_bin = {
+    'model_name': model_type,
+    'input': text.split('\n'),
+    "uie_schema": schema.strip(),
+    "position_prob": prob,
+    "max_seq_len": max_seq_len,
+    "split_sentence": split,
+    "device": "gpu" if gpu else "cpu",
+    "engine": "pytorch" if not engine else "onnx",
+}
+start = time.time()
+rlt = requests.post('http://192.168.0.55:8000/uie', json=data_bin).json()['rlt']
+running_time = time.time() - start
+
+st.markdown("## 🎈 结果展示")
+st.header("")
+
+cs, c1, c2, c3, cLast = st.columns([2, 1.5, 1.5, 1.5, 2])
+
+with c1:
+    CSVButton2 = download_button(rlt, "Data.csv", "📥 Download (.csv)")
+with c2:
+    CSVButton3 = download_button(rlt, "Data.txt", "📥 Download (.txt)")
+with c3:
+    CSVButton4 = download_button(rlt, "Data.json", "📥 Download (.json)")
+
+c1, c2, c3 = st.columns([1, 3, 1])
+
+with c2:
+    st.info(f'运行时间：{int(running_time * 1000)} ms', icon="✅")
+    labels = schema.split(" ")
+    colors = make_color_palette(labels)
+    visualize_ner(text, rlt, colors=colors, span=False)
+
+    json_doc_exp = st.expander("JSON")
+    json_doc_exp.json(rlt)
+
+    dataframe_exp = st.expander("DATAFRAME")
+    columns = ["text", "start", "end", "label", "probability"]
+    for r in rlt:
+        data = [[t[columns[0]], t[columns[1]], t[columns[2]], k, t[columns[4]]] for k, v in r.items() for t in v]
+        df = pd.DataFrame(data, columns=columns).sort_values(by="probability", ascending=False).reset_index(drop=True)
+        df.index += 1
+
+        # Add styling
+        cmGreen = sns.light_palette("green", as_cmap=True)
+        cmRed = sns.light_palette("red", as_cmap=True)
+        df = df.style.background_gradient(
+            cmap=cmGreen,
+            subset=[
+                "probability",
+            ],
+        )
+        format_dictionary = {
+            "probability": "{:.2%}",
+        }
+
+        df = df.format(format_dictionary)
+        dataframe_exp.table(df)

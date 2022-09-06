@@ -141,7 +141,7 @@ class LearNERPredictor(PredictorBase):
                 batch_text,
                 max_length=max_length,
                 padding=True,
-                truncation='only_second',
+                truncation=True,
                 return_offsets_mapping=True,
                 return_tensors="pt"
             )

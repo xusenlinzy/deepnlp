@@ -99,5 +99,3 @@ if __name__ == '__main__':
 
     if opts.do_train:
         trainer.train(train_data=train_ds, dev_data=dev_ds)
-
-    tokenizer.save_pretrained("./checkpoint/uie_bert_v0/checkpoint-eval_f1-best")
