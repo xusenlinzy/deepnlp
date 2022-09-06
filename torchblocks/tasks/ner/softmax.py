@@ -87,7 +87,7 @@ def get_auto_softmax_ner_model(model_type: str = "bert"):
                 decode_label = [self.config.id2label[id.item()] for id, m in zip(ids, mask) if m > 0][
                                1:-1]  # [CLS], [SEP]
                 decode_label = get_entities(decode_label)
-                decode_label = [(l[0], mapping[l[1]][0].item(), mapping[l[2]][1].item(), text[mapping[l[1]][0]: mapping[l[2]][1]]) for l in decode_label]
+                decode_label = [(l[0], mapping[l[1]][0], mapping[l[2]][1], text[mapping[l[1]][0]: mapping[l[2]][1]]) for l in decode_label]
                 decode_labels.append(set(decode_label))
             return decode_labels
 

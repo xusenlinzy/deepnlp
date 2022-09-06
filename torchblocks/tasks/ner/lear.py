@@ -131,7 +131,7 @@ def get_auto_lear_ner_model(model_type: str = "bert"):
                             continue
                         for _end, c2 in zip(*ends):
                             if _start <= _end < seqlens[i] - 1 and c1 == c2:
-                                s, e = mapping[_start][0].item(), mapping[_end][1].item()
+                                s, e = mapping[_start][0], mapping[_end][1]
                                 decode_label.add((
                                     self.config.id2label[c1], s, e, text[s: e]
                                 ))

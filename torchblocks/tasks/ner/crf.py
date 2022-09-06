@@ -89,7 +89,7 @@ def get_auto_crf_ner_model(model_type: str = "bert"):
             for text, ids, mask, mapping in zip(texts, decode_ids, mask, offset_mapping):
                 decode_label = [self.config.id2label[id.item()] for id, m in zip(ids, mask) if m > 0][:-1]  # [CLS], [SEP]
                 decode_label = get_entities(decode_label)
-                decode_label = [(l[0], mapping[l[1]][0].item(), mapping[l[2]][1].item(), text[mapping[l[1]][0]: mapping[l[2]][1]]) for l in decode_label]
+                decode_label = [(l[0], mapping[l[1]][0], mapping[l[2]][1], text[mapping[l[1]][0]: mapping[l[2]][1]]) for l in decode_label]
                 decode_labels.append(set(decode_label))
             return decode_labels
 
@@ -205,7 +205,7 @@ def get_auto_cascade_crf_ner_model(model_type: str = "bert"):
                 for j, ent in enumerate(entities):
                     s, e, p = ent[0].item(), ent[1].item(), entity_preds[i][j].item()
                     if s * e * p != 0:
-                        _start, _end = mapping[s][0].item(), mapping[e][1].item()
+                        _start, _end = mapping[s][0], mapping[e][1]
                         tmp.add((
                             self.config.id2label[p], _start, _end, text[_start: _end]
                         ))

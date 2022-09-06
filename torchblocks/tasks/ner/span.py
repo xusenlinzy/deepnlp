@@ -127,7 +127,7 @@ def get_auto_span_ner_model(model_type: str = "bert"):
                             start, end, label = start, pos, id2label[e]  # [CLS]
                             if end - start < max_span_length:
                                 text, mapping = texts[i], offset_mapping[i]
-                                _start, _end = mapping[start][0].item(), mapping[end][1].item()
+                                _start, _end = mapping[start][0], mapping[end][1]
                                 decode_label.add((label, _start, _end, text[_start: _end]))  # 遇到结束位置，新建span
                         label_start_map[e] = []
                 decode_labels.append(decode_label)

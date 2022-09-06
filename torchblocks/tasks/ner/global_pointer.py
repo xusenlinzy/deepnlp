@@ -107,7 +107,7 @@ def get_auto_gp_ner_model(model_type: str = "bert"):
                     if start_idx >= (l - 1) or end_idx >= (l - 1) or 0 in [start_idx, end_idx]:
                         continue
                     label = self.config.id2label[label_id]
-                    _start, _end = mapping[start_idx][0].item(), mapping[end_idx][1].item()
+                    _start, _end = mapping[start_idx][0], mapping[end_idx][1]
                     entity_list.add((label, _start, _end, text[_start: _end]))
                 all_entity_list.append(set(entity_list))
             return all_entity_list

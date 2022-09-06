@@ -61,6 +61,7 @@ class NERPredictor(PredictorBase):
             )
             
             inputs['texts'] = batch_text
+            inputs["offset_mapping"] = inputs["offset_mapping"].tolist()
 
             inputs = self.build_batch_inputs(inputs)
             outputs = self.model(**inputs)
@@ -100,6 +101,8 @@ class PromptNERPredictor(PredictorBase):
         )
         
         inputs['texts'] = second_sentences
+        inputs["offset_mapping"] = inputs["offset_mapping"].tolist()
+
         inputs = self.build_batch_inputs(inputs)
         outputs = self.model(**inputs)['predictions']
         
@@ -147,6 +150,8 @@ class LearNERPredictor(PredictorBase):
             )
         
             inputs['texts'] = batch_text
+            inputs["offset_mapping"] = inputs["offset_mapping"].tolist()
+
             inputs = {**inputs, **label_inputs}
             inputs = self.build_batch_inputs(inputs)
             

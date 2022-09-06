@@ -96,7 +96,7 @@ def get_auto_tplinker_ner_model(model_type: str = "bert"):
                     # for an entity, the start position can not be larger than the end pos.
                     if e[0] > e[1]:
                         continue
-                    _start, _end = mapping[e[0]][0].item(), mapping[e[1]][1].item()
+                    _start, _end = mapping[e[0]][0], mapping[e[1]][1]
                     entities.add(
                         (
                             tag,

@@ -25,7 +25,8 @@ def load_labels(label_path):
 ############################################ NER Dataset #######################################################
 
 def process_dev_ner(example):
-    return {"target": {(ent['label'], ent['start_offset'], ent['end_offset'] + 1, ent['entity']) for ent in example["entities"]}}
+    return {"target": {(ent['label'], str(ent['start_offset']), str(ent['end_offset'] + 1), ent['entity']) for ent in
+                       example["entities"]}}
 
 
 def get_ner_train_dev_dataset(
@@ -291,16 +292,16 @@ def get_w2ner_train_dev_dataset(
         if is_chinese:
             # 将中文文本的空格替换成其他字符，保证标签对齐
             sentences = [text.replace(" ", "-") for text in sentences]
-            
+
         input_keys = ["input_ids", "pieces2word", "dist_inputs", "grid_mask", "grid_labels"]
         encoded_inputs = {k: [] for k in input_keys}
-        
-        for sentence, label in zip(sentences, examples[label_column_name]): 
+
+        for sentence, label in zip(sentences, examples[label_column_name]):
             tokens = [tokenizer.tokenize(word) for word in sentence[:train_max_seq_length - 2]]
             pieces = [piece for pieces in tokens for piece in pieces]
             _input_ids = tokenizer.convert_tokens_to_ids(pieces)
             _input_ids = np.array([tokenizer.cls_token_id] + _input_ids + [tokenizer.sep_token_id])
-            
+
             length = len(tokens)
             # piece和word的对应关系
             _pieces2word = np.zeros((length, len(_input_ids)), dtype=np.bool)
@@ -312,7 +313,7 @@ def get_w2ner_train_dev_dataset(
                     pieces = list(range(start, start + len(pieces)))
                     _pieces2word[i, pieces[0] + 1: pieces[-1] + 2] = 1
                     start += len(pieces)
-            
+
             # 相对距离
             _dist_inputs = np.zeros((length, length), dtype=np.int)
             for k in range(length):
@@ -326,48 +327,48 @@ def get_w2ner_train_dev_dataset(
                     else:
                         _dist_inputs[i, j] = dis2idx[_dist_inputs[i, j]]
             _dist_inputs[_dist_inputs == 0] = 19
-            
+
             # 标签
             _grid_labels = np.zeros((length, length), dtype=np.int)
             _grid_mask = np.ones((length, length), dtype=np.bool)
-            
+
             for entity in label:
                 if "index" in entity:
                     index = entity["index"]
                 else:
                     _start, _end, _type = entity["start_offset"], entity["end_offset"] + 1, entity["label"]
                     index = list(range(_start, _end))
-                    
+
                 if index[-1] >= train_max_seq_length - 2:
                     continue
-                
+
                 for i in range(len(index)):
                     if i + 1 >= len(index):
                         break
                     _grid_labels[index[i], index[i + 1]] = 1
                 _grid_labels[index[-1], index[0]] = label2id[_type] + 2
-        
+
             for k, v in zip(input_keys, [_input_ids, _pieces2word, _dist_inputs, _grid_mask, _grid_labels]):
                 encoded_inputs[k].append(list(v))
-                
+
         return encoded_inputs
-    
+
     def tokenize(examples):
         # 英文文本使用空格分隔单词，BertTokenizer不对空格tokenize
         sentences = list(examples[text_column_name])
         if is_chinese:
             # 将中文文本的空格替换成其他字符，保证标签对齐
             sentences = [text.replace(" ", "-") for text in sentences]
-            
+
         input_keys = ["input_ids", "pieces2word", "dist_inputs", "grid_mask"]
         encoded_inputs = {k: [] for k in input_keys}
-        
-        for sentence in sentences: 
+
+        for sentence in sentences:
             tokens = [tokenizer.tokenize(word) for word in sentence[:train_max_seq_length - 2]]
             pieces = [piece for pieces in tokens for piece in pieces]
             _input_ids = tokenizer.convert_tokens_to_ids(pieces)
             _input_ids = np.array([tokenizer.cls_token_id] + _input_ids + [tokenizer.sep_token_id])
-            
+
             length = len(tokens)
             # piece和word的对应关系
             _pieces2word = np.zeros((length, len(_input_ids)), dtype=np.bool)
@@ -379,7 +380,7 @@ def get_w2ner_train_dev_dataset(
                     pieces = list(range(start, start + len(pieces)))
                     _pieces2word[i, pieces[0] + 1: pieces[-1] + 2] = 1
                     start += len(pieces)
-            
+
             # 相对距离
             _dist_inputs = np.zeros((length, length), dtype=np.int)
             for k in range(length):
@@ -393,12 +394,12 @@ def get_w2ner_train_dev_dataset(
                     else:
                         _dist_inputs[i, j] = dis2idx[_dist_inputs[i, j]]
             _dist_inputs[_dist_inputs == 0] = 19
-            
+
             _grid_mask = np.ones((length, length), dtype=np.bool)
-        
+
             for k, v in zip(input_keys, [_input_ids, _pieces2word, _dist_inputs, _grid_mask]):
                 encoded_inputs[k].append(list(v))
-                
+
         return encoded_inputs
 
     train_dataset = train_ds.map(
@@ -454,7 +455,8 @@ class DataCollatorForSpanNer:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         batch_start_positions = torch.zeros_like(batch["input_ids"])
@@ -495,7 +497,8 @@ class DataCollatorForCRF:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         batch_label_ids = torch.zeros_like(batch["input_ids"])
@@ -533,7 +536,8 @@ class DataCollatorForCascadeCRF:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         batch_entity_labels = torch.zeros_like(batch["input_ids"])
@@ -584,7 +588,8 @@ class DataCollatorForGlobalPointer:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         bs, seqlen = batch["input_ids"].shape
@@ -596,7 +601,7 @@ class DataCollatorForGlobalPointer:
                     label[tag].add((start, end))
                 for l in label:
                     if not l:  # 至少要有一个标签
-                        l.add((0, 0))  # 如果没有则用0填充 
+                        l.add((0, 0))  # 如果没有则用0填充
                 label = sequence_padding([list(l) for l in label])
                 batch_labels.append(label)
             batch_labels = torch.from_numpy(sequence_padding(batch_labels, seq_dims=2))
@@ -636,7 +641,8 @@ class DataCollatorForTPLinkerPlusNer:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         bs, seqlen = batch["input_ids"].shape
@@ -682,7 +688,8 @@ class DataCollatorForMRCNer:
                 batch["offset_mapping"] = [feature["offset_mapping"][i] for feature in features for i in
                                            range(self.num_labels)]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
 
         batch_start_positions = torch.zeros_like(batch["input_ids"])
@@ -734,7 +741,8 @@ class DataCollatorForLEARNer:
             if "offset_mapping" in features[0].keys():
                 batch["offset_mapping"] = [feature.pop("offset_mapping") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return {**batch, **label_batch}
 
         bs, seqlen = batch["input_ids"].shape
@@ -762,28 +770,28 @@ class DataCollatorForLEARNer:
 class DataCollatorForW2Ner:
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         labels = ([feature.pop("grid_labels") for feature in features] if "grid_labels" in features[0].keys() else None)
-        
+
         input_ids = [feature.pop("input_ids") for feature in features]
         input_ids = torch.from_numpy(sequence_padding(input_ids))
-        
+
         pieces2word = [feature.pop("pieces2word") for feature in features]
         input_lengths = torch.tensor([len(i) for i in pieces2word], dtype=torch.long)
-        
+
         max_wordlen = torch.max(input_lengths).item()
         max_pieces_len = max([x.shape[0] for x in input_ids])
-        
+
         batch_size = input_ids.shape[0]
         sub_mat = torch.zeros(batch_size, max_wordlen, max_pieces_len, dtype=torch.long)
         pieces2word = self.fill(pieces2word, sub_mat)
-        
+
         dist_mat = torch.zeros(batch_size, max_wordlen, max_wordlen, dtype=torch.long)
         dist_inputs = [feature.pop("dist_inputs") for feature in features]
         dist_inputs = self.fill(dist_inputs, dist_mat)
-        
+
         mask_mat = torch.zeros(batch_size, max_wordlen, max_wordlen, dtype=torch.long)
         grid_mask = [feature.pop("grid_mask") for feature in features]
         grid_mask = self.fill(grid_mask, mask_mat)
-        
+
         batch = {
             "input_ids": input_ids,
             "dist_inputs": dist_inputs,
@@ -791,26 +799,27 @@ class DataCollatorForW2Ner:
             "grid_mask": grid_mask,
             "input_lengths": input_lengths,
         }
-        
+
         if labels is None:  # for test
             if "text" in features[0].keys():
                 batch["texts"] = [feature.pop("text") for feature in features]
             if "target" in features[0].keys():
-                batch['target'] = [{tuple(t) for t in feature.pop("target")} for feature in features]
+                batch['target'] = [{tuple([t[0], int(t[1]), int(t[2]), t[3]]) for t in feature.pop("target")} for
+                                   feature in features]
             return batch
-            
+
         labels_mat = torch.zeros(batch_size, max_wordlen, max_wordlen, dtype=torch.long)
         labels = self.fill(labels, labels_mat)
         batch["grid_labels"] = labels
-        
+
         return batch
-    
+
     @staticmethod
     def fill(data, new_data):
         for i, d in enumerate(data):
             new_data[i, :len(d), :len(d[0])] = torch.tensor(d, dtype=torch.long)
         return new_data
-            
+
 
 NER_COLLATOR_MAP = {
     "crf": DataCollatorForCRF,

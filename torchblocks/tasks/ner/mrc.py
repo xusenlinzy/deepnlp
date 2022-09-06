@@ -132,7 +132,7 @@ def get_auto_mrc_ner_model(model_type: str = "bert"):
                             continue
                         e = e.item()
                         if s == e:
-                            _start, _end = mapping[i][0].item(), mapping[i + j][1].item()
+                            _start, _end = mapping[i][0], mapping[i + j][1]
                             entities.add((
                                 entity_types[bs],
                                 _start,
