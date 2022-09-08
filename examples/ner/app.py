@@ -3,8 +3,6 @@ import sys
 sys.path.append("../..")
 
 import time
-import json
-import tempfile
 import streamlit as st
 import pandas as pd
 import seaborn as sns
