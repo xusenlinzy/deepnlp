@@ -1,0 +1,25 @@
+python task_sequence_classification.py \
+    --data_dir "/home/xusenlin/nlp/deepnlp/dataset/tc" \
+    --output_dir "/home/xusenlin/nlp/deepnlp/examples/tc/outputs/mdp/" \
+    --model_type "bert" \
+    --model_name "mdp" \
+    --pretrained_model_path "hfl/chinese-roberta-wwm-ext" \
+    --task_name "mdp" \
+    --do_train "true" \
+    --evaluate_during_training "true" \
+    --do_lower_case "true" \
+    --device_id "0" \
+    --checkpoint_mode "max" \
+    --checkpoint_monitor "eval_f1" \
+    --checkpoint_save_best "true" \
+    --train_max_seq_length 64 \
+    --eval_max_seq_length 64 \
+    --per_gpu_train_batch_size 32 \
+    --per_gpu_eval_batch_size 32 \
+    --learning_rate 2e-5 \
+    --num_train_epochs 10 \
+    --gradient_accumulation_steps 1 \
+    --warmup_proportion 0.1 \
+    --logging_steps 1000 \
+    --save_steps 1000 \
+    --seed 2022
