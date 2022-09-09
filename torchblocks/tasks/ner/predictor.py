@@ -261,6 +261,100 @@ class W2NERPredictor(PredictorBase):
         return encoded_inputs
 
 
+PREDICTOR_MAP = {
+    "mrc": PromptNERPredictor,
+    "lear": LearNERPredictor,
+    "w2ner": W2NERPredictor,
+}
+
+
+def get_auto_ner_predictor(model_name_or_path, model_name="crf", model_type="bert", schema2prompt=None, tokenizer=None,
+                           device=None):
+    predictor_class = PREDICTOR_MAP.get(model_name, NERPredictor)
+    if tokenizer is None:
+        tokenizer = BertTokenizerFast.from_pretrained(model_name_or_path, do_lower_case=True)
+
+    model = get_auto_ner_model(model_name=model_name, model_type=model_type)
+    if model_name not in ["lear", "mrc"]:
+        return predictor_class(model, model_name_or_path, tokenizer, device=device)
+    assert schema2prompt is not None, "schema2prompt must be provided."
+    return predictor_class(schema2prompt, model=model, model_name_or_path=model_name_or_path, tokenizer=tokenizer,
+                           device=device)
+
+
+class NERPipeline(object):
+    def __init__(self, model_name_or_path, model_name="crf", model_type="bert", schema2prompt=None,
+                 device=None, max_seq_len=512, batch_size=64, split_sentence=False, tokenizer=None):
+
+        self._model_name_or_path = model_name_or_path
+        self._model_name = model_name
+        self._model_type = model_type
+        self._schema2prompt = schema2prompt
+        self._device = device
+        self._max_seq_len = max_seq_len
+        self._batch_size = batch_size
+        self._split_sentence = split_sentence
+        self._tokenizer = tokenizer
+
+        self._prepare_predictor()
+
+    def _prepare_predictor(self):
+        logger.info(f">>> [Pytorch InferBackend of {self._model_type}-{self._model_name}] Creating Engine ...")
+        self.inference_backend = get_auto_ner_predictor(self._model_name_or_path, self._model_name,
+                                                        self._model_type, self._schema2prompt, self._tokenizer,
+                                                        self._device)
+
+    def __call__(self, inputs):
+
+        texts = inputs
+        if isinstance(texts, str):
+            texts = [texts]
+
+        max_prompt_len = len(max(self._schema2prompt.values())) if (self._schema2prompt is not None and self._model_name in["mrc", "lear"]) else 0
+        max_predict_len = self._max_seq_len - max_prompt_len - 3
+
+        short_input_texts, self.input_mapping = auto_splitter(texts, max_predict_len,
+                                                              split_sentence=self._split_sentence)
+
+        results = self.inference_backend.predict(short_input_texts, batch_size=self._batch_size,
+                                                 max_length=self._max_seq_len, return_dict=False)
+        results = self._auto_joiner(results, short_input_texts, self.input_mapping)
+        return results
+
+    def _auto_joiner(self, short_results, short_inputs, input_mapping):
+        concat_results = []
+        for k, vs in input_mapping.items():
+            single_results = {}
+            offset = 0
+            for i, v in enumerate(vs):
+                if i == 0:
+                    single_results = short_results[v]
+                else:
+                    for res in short_results[v]:
+                        tmp = res[0], res[1] + offset, res[2] + offset, res[3]
+                        single_results.add(tmp)
+                offset += len(short_inputs[v])
+            single_results = set2json(single_results) if single_results else {}
+            concat_results.append(single_results)
+        return concat_results
+
+    @property
+    def seqlen(self):
+        return self._max_seq_len
+
+    @seqlen.setter
+    def seqlen(self, value):
+        self._max_seq_len = value
+
+    @property
+    def split(self):
+        return self._split_sentence
+
+    @split.setter
+    def split(self, value):
+        self._split_sentence = value
+
+
 def vote(entities_list: List[dict], threshold=0.9) -> dict:
     """
     实体级别的投票方式
@@ -288,100 +382,16 @@ class EnsembleNERPredictor(object):
     """ 基于投票法预测实体
     """
 
-    def __init__(self, predicators: List[PredictorBase]):
+    def __init__(self, predicators: List[NERPipeline]):
         self.predicators = predicators
 
-    def predict(self, text: Union[str, List[str]], max_length: int = 512, threshold=0.8) -> Union[dict, List[dict]]:
-
+    def predict(self, text: Union[str, List[str]], threshold=0.8) -> Union[dict, List[dict]]:
         single_sentence = False
         if isinstance(text, str):
             text = [text]
             single_sentence = True
 
-        output_list = []
-        for sent in text:
-            entities_list = [predicator.predict(sent, max_length=max_length) for predicator in self.predicators]
-            output_list.append(vote(entities_list, threshold=threshold))
+        all_results = [predicator(text) for predicator in self.predicators]
+        output_list = [vote(list(entities_list), threshold=threshold) for entities_list in zip(*all_results)]
 
         return output_list[0] if single_sentence else output_list
-
-
-PREDICTOR_MAP = {
-    "mrc": PromptNERPredictor,
-    "lear": LearNERPredictor,
-    "w2ner": W2NERPredictor,
-}
-
-
-def get_auto_ner_predictor(model_name_or_path, model_name="crf", model_type="bert", schema2prompt=None, tokenizer=None, device=None):
-    predictor_class = PREDICTOR_MAP.get(model_name, NERPredictor)
-    if tokenizer is None:
-        tokenizer = BertTokenizerFast.from_pretrained(model_name_or_path, do_lower_case=True)
-
-    model = get_auto_ner_model(model_name=model_name, model_type=model_type)
-    if model_name not in ["lear", "mrc"]:
-        return predictor_class(model, model_name_or_path, tokenizer, device=device)
-    assert schema2prompt is not None, "schema2prompt must be provided."
-    return predictor_class(schema2prompt, model=model, model_name_or_path=model_name_or_path, tokenizer=tokenizer, device=device)
-
-
-class NERPipeline(object):
-    def __init__(self, model_name_or_path, model_name="crf", model_type="bert", schema2prompt=None,
-                 device=None, max_seq_len=512, batch_size=64, split_sentence=False, tokenizer=None):
-
-        self._model_name_or_path = model_name_or_path
-        self._model_name = model_name
-        self._model_type = model_type
-        self._schema2prompt = schema2prompt
-        self._device = device
-        self._max_seq_len = max_seq_len
-        self._batch_size = batch_size
-        self._split_sentence = split_sentence
-        self._tokenizer = tokenizer
-
-        self._prepare_predictor()
-
-    def _prepare_predictor(self):
-        logger.info(f">>> [Pytorch InferBackend of {self._model_type}-{self._model_name}] Creating Engine ...")
-        self.inference_backend = get_auto_ner_predictor(self._model_name_or_path, self._model_name,
-                                                        self._model_type, self._schema2prompt, self._tokenizer, self._device)
-
-    def __call__(self, inputs):
-
-        texts = inputs
-        if isinstance(texts, str):
-            texts = [texts]
-
-        max_prompt_len = len(max(self.schema2prompt.values())) if self._schema2prompt is not None else 0
-        max_predict_len = self._max_seq_len - max_prompt_len - 3
-
-        short_input_texts, self.input_mapping = auto_splitter(texts, max_predict_len, split_sentence=self._split_sentence)
-
-        results = self.inference_backend.predict(short_input_texts, batch_size=self._batch_size,
-                                                 max_length=self._max_seq_len, return_dict=False)
-        results = self._auto_joiner(results, self.input_mapping)
-        return results
-
-    def _auto_joiner(self, short_results, input_mapping):
-        concat_results = []
-        for k, vs in input_mapping.items():
-            group_results = [short_results[v] for v in vs if len(short_results[v]) > 0]
-            single_results = set2json(set.union(*group_results))
-            concat_results.append(single_results)
-        return concat_results
-
-    @property
-    def seqlen(self):
-        return self._max_seq_len
-
-    @seqlen.setter
-    def seqlen(self, value):
-        self._max_seq_len = value
-
-    @property
-    def split(self):
-        return self._split_sentence
-
-    @split.setter
-    def split(self, value):
-        self._split_sentence = value

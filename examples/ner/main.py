@@ -7,10 +7,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Union
 import streamlit as st
-from transformers import BertTokenizerFast
-from torchblocks.tasks.ner import get_auto_ner_model
-from torchblocks.tasks.ner import NERPredictor, EnsembleNERPredictor, PromptNERPredictor
-from torchblocks.tasks.ner import LearNERPredictor, W2NERPredictor
+from torchblocks.tasks.ner import NERPipeline, EnsembleNERPredictor
 
 # 应用实例化
 app = FastAPI()
@@ -50,39 +47,21 @@ LABEL_MAP = {
 }
 
 
-@st.cache(hash_funcs={BertTokenizerFast: id})
-def load_tokenizer():
-    return BertTokenizerFast.from_pretrained('hfl/chinese-roberta-wwm-ext', do_lower_case=True)
-
-
-PREDICTOR_MAP = {"lear": LearNERPredictor, "w2ner": W2NERPredictor, "mrc": PromptNERPredictor}
-
-
-def load_auto_predictor(model_name):
-    predictor_class = PREDICTOR_MAP.get(model_name, NERPredictor)
-
-    @st.cache(hash_funcs={predictor_class: id})
-    def load_predictor():
-        tokenizer = load_tokenizer()
-        model_name_or_path = MODEL_PATH_MAP[model_name]
-        model = get_auto_ner_model(model_name=model_name, model_type="bert")
-
-        if model_name in ["lear", "mrc"]:
-            return predictor_class(schema2prompt, model=model, model_name_or_path=model_name_or_path,
-                                   tokenizer=tokenizer)
-        else:
-            return predictor_class(model, model_name_or_path, tokenizer)
-
-    return load_predictor()
+@st.cache(hash_funcs={NERPipeline: id})
+def load_pipline(model_name="global-pointer", max_seq_len=512, split_sentence=False, batch_size=256):
+    model_name_or_path = MODEL_PATH_MAP[model_name.lower()]
+    return NERPipeline(model_name_or_path, model_name.lower(), model_type="bert", schema2prompt=schema2prompt, max_seq_len=max_seq_len,
+                       split_sentence=split_sentence, batch_size=batch_size)
 
 
 @st.cache(hash_funcs={EnsembleNERPredictor: id})
 def load_ensemble_predictor():
-    predictors = [load_auto_predictor(name) for name in
+    predictors = [load_pipline(name) for name in
                   ["crf", "span", "global-pointer", "tplinker", "mrc", "lear", "w2ner"]]
     return EnsembleNERPredictor(predictors)
 
 
+# 定义数据格式
 # 定义数据格式
 class Data(BaseModel):
     input: Union[str, List[str]]  # 可输入一个句子或多个句子
@@ -95,16 +74,16 @@ class Data(BaseModel):
 @app.post('/ner')
 def uie(data: Data):
     model_name = getattr(data, "model_name", "global-pointer")
-    if model_name.lower() == "ensemble":
+    if model_name == "ensemble":
         ner = load_ensemble_predictor()
     else:
-        ner = load_auto_predictor(model_name.lower())
+        ner = load_pipline(model_name.lower(), max_seq_len=data.max_seq_len, split_sentence=True)
 
     text = data.input
     if model_name == "ensemble":
-        rlt = ner.predict(text, max_length=data.max_seq_len, threshold=data.threshold)
+        rlt = ner.predict(text, threshold=data.threshold)
     else:
-        rlt = ner.predict(text, max_length=data.max_seq_len)
+        rlt = ner.predict(text)
 
     if isinstance(rlt, dict):
         res = {LABEL_MAP[key]: value for key, value in rlt.items()}

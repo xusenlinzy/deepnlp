@@ -3,14 +3,14 @@ import sys
 sys.path.append("../..")
 
 import time
+import json
 import streamlit as st
 import pandas as pd
 import seaborn as sns
-from transformers import BertTokenizerFast
-from torchblocks.tasks.ner import get_auto_ner_model
-from torchblocks.tasks.ner import NERPredictor, EnsembleNERPredictor, PromptNERPredictor, LearNERPredictor, \
-    W2NERPredictor
+from torchblocks.tasks.ner import NERPipeline
+from torchblocks.tasks.ner import EnsembleNERPredictor
 from torchblocks.utils.app import visualize_ner, download_button, _max_width_, make_color_palette
+
 
 MODEL_PATH_MAP = {
     "tplinker": '/home/xusenlin/nlp/deepnlp/examples/ner/outputs/cmeee/tplinkerplus/cmeee-tplinkerplus_bert_v0/checkpoint-eval_f1_micro-best',
@@ -47,37 +47,41 @@ LABEL_MAP = {
 }
 
 
-@st.cache(hash_funcs={BertTokenizerFast: id})
-def load_tokenizer():
-    return BertTokenizerFast.from_pretrained('hfl/chinese-roberta-wwm-ext', do_lower_case=True)
+def reformat_v1(rlt):
+    rlt = {LABEL_MAP[_type]: [
+        {"text": ent["text"], "start": ent["start"], "end": ent["end"],
+            "probability": float(ent["probability"])}
+        for ent in ents] for _type, ents in rlt.items()}
+    return rlt
 
 
-PREDICTOR_MAP = {"lear": LearNERPredictor, "w2ner": W2NERPredictor, "mrc": PromptNERPredictor}
+def reformat_v2(rlt):
+    rlt = {LABEL_MAP[_type]: [
+        {"text": ent["text"], "start": ent["start"], "end": ent["end"]}
+        for ent in ents] for _type, ents in rlt.items()}
+    return rlt
+
+
+@st.cache
+def convert_df(df):
+    # IMPORTANT: Cache the conversion to prevent computation on every rerun
+    return df.to_csv(index=False).encode('utf-8')
+
+
 labels = LABEL_MAP.values()
 colors = make_color_palette(labels)
 
 
-def load_auto_predictor(model_name):
-    predictor_class = PREDICTOR_MAP.get(model_name, NERPredictor)
-
-    @st.cache(hash_funcs={predictor_class: id})
-    def load_predictor():
-        tokenizer = load_tokenizer()
-        model_name_or_path = MODEL_PATH_MAP[model_name]
-        model = get_auto_ner_model(model_name=model_name, model_type="bert")
-
-        if model_name in ["lear", "mrc"]:
-            return predictor_class(schema2prompt, model=model, model_name_or_path=model_name_or_path,
-                                   tokenizer=tokenizer)
-        else:
-            return predictor_class(model, model_name_or_path, tokenizer)
-
-    return load_predictor()
+@st.cache(hash_funcs={NERPipeline: id})
+def load_pipline(model_name="global-pointer", max_seq_len=512, split_sentence=False, batch_size=256):
+    model_name_or_path = MODEL_PATH_MAP[model_name.lower()]
+    return NERPipeline(model_name_or_path, model_name.lower(), model_type="bert", schema2prompt=schema2prompt, max_seq_len=max_seq_len,
+                       split_sentence=split_sentence, batch_size=batch_size)
 
 
 @st.cache(hash_funcs={EnsembleNERPredictor: id})
 def load_ensemble_predictor():
-    predictors = [load_auto_predictor(name) for name in
+    predictors = [load_pipline(name) for name in
                   ["crf", "span", "global-pointer", "tplinker", "mrc", "lear", "w2ner"]]
     return EnsembleNERPredictor(predictors)
 
@@ -122,7 +126,8 @@ with st.form(key="my_form"):
             0,
             512,
             512,
-            help="模型输入的最大文本长度，超过该长度则截断。")
+            help="模型输入的最大文本长度，超过该长度则截断。",
+        )
 
         prob = st.slider(
             "阈值",
@@ -130,7 +135,14 @@ with st.form(key="my_form"):
             max_value=1.0,
             value=0.5,
             step=0.01,
-            help="模型输出实体的阈值，当概率值大于该值则输出该实体，仅对于`ensemble`模型。")
+            help="模型输出实体的阈值，当概率值大于该值则输出该实体，仅对于`ensemble`模型。",
+        )
+
+        split = st.checkbox(
+            '截断句子',
+            value=False,
+            help="对于文本长度超过最大长度的句子，将句子切分成多个句子输入模型。",
+        )
 
     with c2:
         text = st.text_area(
@@ -147,56 +159,50 @@ if not submit_button:
 if model_name == "ENSEMBLE":
     ner = load_ensemble_predictor()
 else:
-    ner = load_auto_predictor(model_name.lower())
+    ner = load_pipline(model_name.lower(), max_seq_len=max_seq_len, split_sentence=split)
 
 if uploaded_file is not None:
     data = pd.read_json(uploaded_file, lines=True, encoding='utf-8')
     texts = data.text.values
+
     bar = st.progress(0.0)
     res = []
-    for i, text in enumerate(texts):
+    total_batch = len(texts) // 512 + (1 if len(texts) % 512 > 0 else 0)
+    for i, batch_id in enumerate(range(total_batch)):
+        text = texts[batch_id * 512: (batch_id + 1) * 512]
         if model_name == "ENSEMBLE":
-            rlt = ner.predict(text, max_length=max_seq_len, threshold=prob)
+            rlt = ner.predict(text, threshold=prob)
         else:
-            rlt = ner.predict(text, max_length=max_seq_len)
+            rlt = ner(text)
 
-        if model_name == "ENSEMBLE":
-            rlt = {LABEL_MAP[_type]: [
-                {"text": ent["text"], "start": ent["start"], "end": ent["end"],
-                 "probability": float(ent["probability"])}
-                for ent in ents] for _type, ents in rlt.items()}
-        else:
-            rlt = {LABEL_MAP[_type]: [
-                {"text": ent["text"], "start": ent["start"], "end": ent["end"]}
-                for ent in ents] for _type, ents in rlt.items()}
-
-        bar.progress((i + 1) / len(texts))
-        res.append(rlt)
+        bar.progress((i + 1) / total_batch)
+        res.extend(rlt)
 
         if i == 0:
-            visualize_ner(text, [rlt], colors=colors)
+            visualize_ner(text, rlt[:10], colors=colors)
+
     data["prediction"] = res
-    CSVButton1 = download_button(data, "medical_predict.json", "📥 Download (.json)")
+    data["prediction"] = data["prediction"].apply(reformat_v1 if model_name == "ENSEMBLE" else reformat_v2)
+    data["prediction"] = data["prediction"].apply(lambda x: json.dumps(x, ensure_ascii=False))
+    csv = convert_df(data)
+
+    st.download_button(
+        label="📥 Download (.csv)",
+        data=csv,
+        file_name='ner_predict.csv',
+        mime='text/csv',
+    )
+
     st.stop()
 
 start = time.time()
 if model_name == "ENSEMBLE":
-    rlt = ner.predict(text.split(), max_length=max_seq_len, threshold=prob)
+    rlt = ner.predict(text.split(), threshold=prob)
 else:
-    rlt = ner.predict(text.split(), max_length=max_seq_len)
+    rlt = ner(text.split())
 running_time = time.time() - start
 
-res = []
-for r in rlt:
-    if model_name == "ENSEMBLE":
-        tmp = {LABEL_MAP[_type]: [
-            {"text": ent["text"], "start": ent["start"], "end": ent["end"], "probability": float(ent["probability"])}
-            for ent in ents] for _type, ents in r.items()}
-    else:
-        tmp = {LABEL_MAP[_type]: [
-            {"text": ent["text"], "start": ent["start"], "end": ent["end"]}
-            for ent in ents] for _type, ents in r.items()}
-    res.append(tmp)
+res = [reformat_v1(r) if model_name == "ENSEMBLE" else reformat_v2(r) for r in rlt]
 
 st.markdown("## 🎈 结果展示")
 st.header("")
@@ -242,7 +248,7 @@ with c2:
                 ],
             )
             format_dictionary = {
-                "probability": "{:.2%}",
+                "probability": "{:.1%}",
             }
 
             df = df.format(format_dictionary)
