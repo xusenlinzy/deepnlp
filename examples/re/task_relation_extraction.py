@@ -202,7 +202,7 @@ def main():  # sourcery skip: low-code-quality
             return_unused_kwargs=True, 
             num_predicates=len(opts.label_list),
             predicate2id=predicate2id,
-            id2predicate=id2predicate, 
+            id2predicate=id2predicate,
             decode_thresh=opts.decode_thresh,
             pfn_hidden_size=opts.pfn_hidden_size,
             dropout=opts.dropout,
@@ -217,8 +217,8 @@ def main():  # sourcery skip: low-code-quality
     # trainer
     logger.info("initializing traniner")
     metrics = [ExtractionScore()]
-    trainer = ExtractionTrainer(opts=opts, model=model, metrics=metrics, logger=logger, collate_fn=collate_fn,
-                                wandb_config=unused_kwargs, project="RE")
+    trainer = ExtractionTrainer(opts=opts, model=model, tokenizer=tokenizer, metrics=metrics, logger=logger,
+                                collate_fn=collate_fn, wandb_config=unused_kwargs, project="RE")
 
     if opts.do_train:
         trainer.train(train_data=train_dataset, dev_data=dev_dataset)

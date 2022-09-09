@@ -272,8 +272,8 @@ def main():  # sourcery skip: low-code-quality, remove-redundant-if, split-or-if
     # trainer
     logger.info("initializing trainer")
     metrics = [ExtractionScore()]
-    trainer = ExtractionTrainer(opts=opts, model=model, metrics=metrics, logger=logger, collate_fn=collate_fn,
-                                wandb_config=unused_kwargs, project="NER")
+    trainer = ExtractionTrainer(opts=opts, model=model, tokenizer=tokenizer, metrics=metrics, logger=logger,
+                                collate_fn=collate_fn, wandb_config=unused_kwargs, project="NER")
 
     if opts.do_train:
         trainer.train(train_data=train_dataset, dev_data=dev_dataset)

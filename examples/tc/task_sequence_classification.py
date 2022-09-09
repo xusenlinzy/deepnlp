@@ -67,7 +67,7 @@ def main():
     metrics = [F1Score(task_type='multiclass', average='macro')]
     if opts.num_labels <= 30:
         metrics += [ClassReport(target_names=opts.label_list)]
-    trainer = TextClassifierTrainer(opts=opts, model=model, metrics=metrics, logger=logger,
+    trainer = TextClassifierTrainer(opts=opts, model=model, tokenizer=tokenizer, metrics=metrics, logger=logger,
                                     collate_fn=DataCollatorWithPadding(tokenizer))
 
     if opts.do_train:

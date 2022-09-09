@@ -4,5 +4,5 @@ from .sequence_classification_rdrop import get_auto_rdrop_tc_model
 from .siamese_classification import BertForSiameseClassification
 from .sequence_classification_cnn import *
 from .processor import *
-from .predictor import TextClassificationPredictor
+from .predictor import TextClassificationPredictor, get_auto_tc_predictor, TextClassificationPipeline
 from .auto import get_auto_tc_model

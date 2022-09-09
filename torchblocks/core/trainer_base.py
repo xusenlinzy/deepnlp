@@ -50,6 +50,7 @@ class TrainerBase:
     def __init__(self,
                  opts,
                  model,
+                 tokenizer,
                  metrics,
                  logger,
                  optimizer=None,
@@ -63,6 +64,7 @@ class TrainerBase:
                  **kwargs):
         self.opts = opts
         self.model = model
+        self.tokenizer = tokenizer
         self.metrics = metrics
         self.logger = logger
         self.scheduler = scheduler
@@ -567,6 +569,7 @@ class TrainerBase:
             'opts': self.opts,
             'optimizer': self.optimizer,
             'global_step': self.global_step,
+            'vocab': self.tokenizer,
         }
         if self.scheduler is not None:
             states['scheduler'] = self.scheduler

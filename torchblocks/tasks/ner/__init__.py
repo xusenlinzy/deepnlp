@@ -8,4 +8,5 @@ from .lear import get_auto_lear_ner_model
 from .w2ner import get_auto_w2ner_ner_model
 from .auto import get_auto_ner_model
 from .processor import *
-from .predictor import NERPredictor, PromptNERPredictor, LearNERPredictor, W2NERPredictor, EnsembleNERPredictor
+from .predictor import NERPredictor, PromptNERPredictor, LearNERPredictor, W2NERPredictor
+from .predictor import EnsembleNERPredictor, get_auto_ner_predictor, NERPipeline

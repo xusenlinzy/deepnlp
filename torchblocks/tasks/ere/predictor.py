@@ -1,14 +1,12 @@
 import torch
-import logging
 from tqdm import tqdm
 from collections import defaultdict
 from typing import List, Union
+from transformers import BertTokenizerFast
+from .auto import get_auto_re_model
 from ..predictor_base import PredictorBase
-
-
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s', datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
-logger = logging.getLogger(__name__)
+from ...utils.common import auto_splitter
+from ..uie.utils import logger, tqdm
 
 
 def set2json(labels) -> dict:
@@ -34,8 +32,10 @@ class REPredictor(PredictorBase):
             text: Union[str, List[str]],
             batch_size: int = 64,
             max_length: int = 512,
+            return_dict: bool = True,
     ) -> Union[dict, List[dict]]:
         # sourcery skip: boolean-if-exp-identity, remove-unnecessary-cast
+        
         single_sentence = False
         if isinstance(text, str):
             text = [text]
@@ -63,7 +63,10 @@ class REPredictor(PredictorBase):
             outputs = self.model(**inputs)
             output_list.extend(outputs['predictions'])
         
-        return set2json(output_list[0]) if single_sentence else [set2json(o) for o in output_list]
+        if not return_dict:
+            return output_list[0] if single_sentence else output_list
+        else:
+            return set2json(output_list[0]) if single_sentence else [set2json(o) for o in output_list]
 
 
 def vote(triples_list: List[dict], threshold=0.9) -> dict:
@@ -107,4 +110,69 @@ class EnsembleREPredictor(object):
             output_list.append(vote(entities_list, threshold=threshold))
             
         return output_list[0] if single_sentence else output_list
-    
+
+
+def get_auto_re_predictor(model_name_or_path, model_name="gplinker", model_type="bert", tokenizer=None, device=None):
+    if tokenizer is None:
+        tokenizer = BertTokenizerFast.from_pretrained(model_name_or_path, do_lower_case=True)
+    model = get_auto_re_model(model_name=model_name, model_type=model_type)
+    return REPredictor(model, model_name_or_path, tokenizer=tokenizer, device=device)
+
+
+class REPipeline(object):
+    def __init__(self, model_name_or_path, model_name="gplinker", model_type="bert", device=None, 
+                 max_seq_len=512, batch_size=64, split_sentence=False, tokenizer=None):
+
+        self._model_name_or_path = model_name_or_path
+        self._model_name = model_name
+        self._model_type = model_type
+        self._device = device
+        self._max_seq_len = max_seq_len
+        self._batch_size = batch_size
+        self._split_sentence = split_sentence
+        self._tokenizer = tokenizer
+
+        self._prepare_predictor()
+
+    def _prepare_predictor(self):
+        logger.info(f">>> [Pytorch InferBackend of {self._model_type}-{self._model_name}] Creating Engine ...")
+        self.inference_backend = get_auto_re_predictor(self._model_name_or_path, self._model_name, 
+                                                       self._model_type, self._tokenizer, self._device)
+
+    def __call__(self, inputs):
+
+        texts = inputs
+        if isinstance(texts, str):
+            texts = [texts]
+
+        max_predict_len = self._max_seq_len - 2
+        short_input_texts, self.input_mapping = auto_splitter(texts, max_predict_len, split_sentence=self._split_sentence)
+
+        results = self.inference_backend.predict(short_input_texts, batch_size=self._batch_size,
+                                                 max_length=self._max_seq_len, return_dict=False)
+        results = self._auto_joiner(results, self.input_mapping)
+        return results
+
+    def _auto_joiner(self, short_results, input_mapping):
+        concat_results = []
+        for k, vs in input_mapping.items():
+            group_results = [short_results[v] for v in vs if len(short_results[v]) > 0]
+            single_results = set2json(set.union(*group_results))
+            concat_results.append(single_results)
+        return concat_results
+
+    @property
+    def seqlen(self):
+        return self._max_seq_len
+
+    @seqlen.setter
+    def seqlen(self, value):
+        self._max_seq_len = value
+
+    @property
+    def split(self):
+        return self._split_sentence
+
+    @split.setter
+    def split(self, value):
+        self._split_sentence = value

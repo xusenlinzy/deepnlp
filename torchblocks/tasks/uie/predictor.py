@@ -1,3 +1,4 @@
+import re
 import six
 import math
 import torch
@@ -55,10 +56,13 @@ class ONNXInferBackend(object):
 
 
 class PyTorchInferBackend:
-    def __init__(self, model_name_or_path, device='cpu', use_fp16=False):
-        from .model import UIE
+    def __init__(self, model_name_or_path, device='cpu', use_fp16=False, multilingual=False):
+        from .model import UIE, UIEM
         logger.info(">>> [PyTorchInferBackend] Creating Engine ...")
-        self.model = UIE.from_pretrained(model_name_or_path)
+        if multilingual:
+            self.model = UIEM.from_pretrained(model_name_or_path)
+        else:
+            self.model = UIE.from_pretrained(model_name_or_path)
         self.model.eval()
         self.device = device
         if self.device == 'gpu':
@@ -93,20 +97,21 @@ class PyTorchInferBackend:
 class UIEPredictor(object):
     keys_to_ignore_on_gpu = ['offset_mapping', 'texts']  # batch不存放在gpu中的变量
 
-    def __init__(self, model_name_or_path, schema, engine='pytorch', device='cpu', position_prob=0.5, max_seq_len=512,
-                 batch_size=64, split_sentence=False, use_fp16=False):
+    def __init__(self, model_name_or_path, schema, schema_lang="zh", multilingual=False, engine='pytorch', device='cpu',
+                 position_prob=0.5, max_seq_len=512, batch_size=64, split_sentence=False, use_fp16=False, is_english_model=False):
 
         assert isinstance(device, six.string_types), "The type of device must be string."
         assert device in ['cpu', 'gpu'], "The device must be cpu or gpu."
         self._engine = engine
         self._model_name_or_path = model_name_or_path
+        self._is_en = bool(schema_lang == 'en' or is_english_model)
+        self._multilingual = multilingual
         self._device = device
         self._position_prob = position_prob
         self._max_seq_len = max_seq_len
         self._batch_size = batch_size
         self._split_sentence = split_sentence
         self._use_fp16 = use_fp16
-
         self._schema_tree = None
         self.set_schema(schema)
         self._prepare_predictor()
@@ -116,7 +121,7 @@ class UIEPredictor(object):
         assert self._engine in ['pytorch', 'onnx'], "engine must be pytorch or onnx!"
         if self._engine == 'pytorch':
             self.inference_backend = PyTorchInferBackend(self._model_name_or_path, device=self._device,
-                                                         use_fp16=self._use_fp16)
+                                                         use_fp16=self._use_fp16, multilingual=self._multilingual)
 
         if self._engine == 'onnx':
             self.inference_backend = ONNXInferBackend(self._model_name_or_path, device=self._device,
@@ -165,7 +170,23 @@ class UIEPredictor(object):
                         if len(pre) == 0:
                             input_map[cnt] = []
                         else:
-                            examples.extend({"text": data, "prompt": dbc2sbc(p + node.name)} for p in pre)
+                            for p in pre:
+                                if self._is_en:
+                                    if re.search(r'\[.*?\]$', node.name):
+                                        prompt_prefix = node.name[:node.name.find(
+                                            "[", 1)].strip()
+                                        cls_options = re.search(
+                                            r'\[.*?\]$', node.name).group()
+                                        # Sentiment classification of xxx [positive, negative]
+                                        prompt = prompt_prefix + p + " " + cls_options
+                                    else:
+                                        prompt = node.name + p
+                                else:
+                                    prompt = p + node.name
+                                examples.append({
+                                    "text": data,
+                                    "prompt": dbc2sbc(prompt)
+                                })
                             input_map[cnt] = [i + idx for i in range(len(pre))]
                             idx += len(pre)
                         cnt += 1
@@ -195,6 +216,7 @@ class UIEPredictor(object):
                                 relations[k][i]["relations"][node.name] = result_list[v[i]]
                             else:
                                 relations[k][i]["relations"][node.name].extend(result_list[v[i]])
+
                     new_relations = [[] for _ in range(len(datas))]
                     for i in range(len(relations)):
                         for j in range(len(relations[i])):
@@ -202,11 +224,16 @@ class UIEPredictor(object):
                                 for k in range(len(relations[i][j]["relations"][node.name])):
                                     new_relations[i].append(relations[i][j]["relations"][node.name][k])
                     relations = new_relations
+
                 prefix = [[] for _ in range(len(datas))]
                 for k, v in input_map.items():
                     for idx in v:
                         for i in range(len(result_list[idx])):
-                            prefix[k].append(result_list[idx][i]["text"] + "的")
+                            if self._is_en:
+                                prefix[k].append(" of " + result_list[idx][i]["text"])
+                            else:
+                                prefix[k].append(result_list[idx][i]["text"] + "的")
+
                 for child in node.children:
                     child.prefix = prefix
                     child.parent_relations = relations
@@ -314,8 +341,12 @@ class UIEPredictor(object):
         start_prob_concat, end_prob_concat = [], []
         batch_iterator = tqdm(range(0, len(short_input_texts), self._batch_size), desc="Predicting", unit='batch')
         for batch_start in batch_iterator:
-            batch = {key: np.array(value[batch_start: batch_start + self._batch_size], dtype="int64") for key, value in
-                     encoded_inputs.items() if key not in self.keys_to_ignore_on_gpu}
+            if self._multilingual:
+                batch = {key: np.array(value[batch_start: batch_start + self._batch_size], dtype="int64") for key, value
+                         in encoded_inputs.items() if key in ["input_ids"]}
+            else:
+                batch = {key: np.array(value[batch_start: batch_start + self._batch_size], dtype="int64") for key, value
+                         in encoded_inputs.items() if key not in self.keys_to_ignore_on_gpu}
             outputs = self.inference_backend.infer(batch)
 
             start_prob, end_prob = outputs[0], outputs[1]
