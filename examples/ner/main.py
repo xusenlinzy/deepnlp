@@ -77,13 +77,13 @@ def uie(data: Data):
     if model_name == "ensemble":
         ner = load_ensemble_predictor()
     else:
-        ner = load_pipline(model_name.lower(), max_seq_len=data.max_seq_len, split_sentence=True)
+        ner = load_pipline(model_name.lower(), max_seq_len=data.max_seq_len)
 
     text = data.input
     if model_name == "ensemble":
         rlt = ner.predict(text, threshold=data.threshold)
     else:
-        rlt = ner.predict(text)
+        rlt = ner(text)
 
     if isinstance(rlt, dict):
         res = {LABEL_MAP[key]: value for key, value in rlt.items()}
@@ -93,7 +93,7 @@ def uie(data: Data):
             dic = {LABEL_MAP[key]: value for key, value in r.items()}
             res.append(dic)
 
-    return {'success': True, 'rlt': res}
+    return {'success': True, 'rlt': res[0] if isinstance(text, str) and isinstance(res, list) else res}
 
 
 if __name__ == '__main__':

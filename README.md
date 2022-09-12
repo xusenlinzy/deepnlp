@@ -31,7 +31,6 @@
 from torchblocks.tasks.tc import TextClassificationPipeline
 
 pipline = TextClassificationPipeline("my_bert_model_path", model_name="fc", model_type="bert")
-
 text = "以色列大规模空袭开始！伊朗多个军事目标遭遇打击，誓言对等反击"
 print(pipline(text))
 ```
@@ -85,7 +84,58 @@ print(pipline(text))
 from pprint import pprint
 from torchblocks.tasks.ner import NERPipeline
 
-text = "结果上周六他们主场0：3惨败给了中游球队瓦拉多利德，近7个多月以来西甲首次输球。"
 pipline = NERPipeline("my_bert_model_path", model_name="crf", model_type="bert")
+text = "结果上周六他们主场0：3惨败给了中游球队瓦拉多利德，近7个多月以来西甲首次输球。"
+pprint(pipline(text))
+```
+
+## 实体关系抽取
+
+### 1. 将训练数据转换为如下的 `json` 格式
+
+```json
+{
+  "text": "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部", 
+  "spo_list": [
+    {
+      "predicate": "出生地", 
+      "object_type": "地点", 
+      "subject_type": "人物", 
+      "object": "圣地亚哥", 
+      "subject": "查尔斯·阿兰基斯"
+    }, 
+    {
+      "predicate": "出生日期", 
+      "object_type": "Date", 
+      "subject_type": "人物", 
+      "object": "1989年4月17日",
+      "subject": "查尔斯·阿兰基斯"
+    }
+  ]
+}
+```
+
+**训练数据包含两个文件**：`train.json` 和 `dev.json`。
+
+### 2. 通过运行 [`bash`](./examples/re/re.sh) 命令进行模型微调
+
+支持的模型
+
+  - ⭐ [**`casrel`**](./torchblocks/tasks/ere/casrel.py)：[A Novel Cascade Binary Tagging Framework for Relational Triple Extraction.](https://aclanthology.org/2020.acl-main.136.pdf)
+  - ⭐ [**`tplinker`**](./torchblocks/tasks/ere/tplinker.py)：[TPLinker: Single-stage Joint Extraction of Entities and Relations Through Token Pair Linking.](https://aclanthology.org/2020.coling-main.138.pdf)
+  - ⭐ [**`spn`**](./torchblocks/tasks/ere/spn.py)：[Joint Entity and Relation Extraction with Set Prediction Networks.](http://xxx.itp.ac.cn/pdf/2011.01675v2)
+  - ⭐ [**`prgc`**](./torchblocks/tasks/ere/prgc.py)：[PRGC: Potential Relation and Global Correspondence Based Joint Relational Triple Extraction.](https://aclanthology.org/2021.acl-long.486.pdf)
+  - ⭐ [**`pfn`**](./torchblocks/tasks/ere/pfn.py)：[A Partition Filter Network for Joint Entity and Relation Extraction.](https://aclanthology.org/2021.emnlp-main.17.pdf)
+  - ⭐ [**`grte`**](./torchblocks/tasks/ere/grte.py)：[A Novel Global Feature-Oriented Relational Triple Extraction Model based on Table Filling.](https://aclanthology.org/2021.emnlp-main.208.pdf)
+  - ⭐ [**`gplinker`**](./torchblocks/tasks/ere/gplinker.py)：[GPLinker：基于GlobalPointer的实体关系联合抽取](https://kexue.fm/archives/8888)
+
+### 3. 模型预测
+
+```python
+from pprint import pprint
+from torchblocks.tasks.ere import REPipeline
+
+pipline = REPipeline("my_bert_model_path", model_name="gplinker", model_type="bert")
+text = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部。"
 pprint(pipline(text))
 ```
