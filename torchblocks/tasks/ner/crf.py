@@ -7,14 +7,6 @@ from ...utils.tensor import sequence_padding
 from ...metrics.sequence_labeling.scheme import get_entities
 
 
-def get_extended_attention_mask(attention_mask: torch.Tensor):
-    if attention_mask.dim() == 3:
-        extended_attention_mask = attention_mask[:, None, :, :]
-    elif attention_mask.dim() == 2:
-        extended_attention_mask = attention_mask[:, None, None, :]
-    return (1.0 - extended_attention_mask) * -10000.0
-
-
 def get_auto_crf_ner_model(model_type: str = "bert"):
     base_model, parent_model = MODEL_MAP[model_type]
 
@@ -33,8 +25,19 @@ def get_auto_crf_ner_model(model_type: str = "bert"):
             self.bert = base_model(config)
             self.config = config
             self.dropout = nn.Dropout(config.hidden_dropout_prob)
+            
+            self.use_lstm = getattr(config, 'use_lstm', False)
+            mid_hidden_size = getattr(config, 'mid_hidden_size', config.hidden_size // 3)
+            if self.use_lstm:
+                self.mid_layer = nn.LSTM(config.hidden_size, mid_hidden_size // 2, 1, bidirectional=True, batch_first=True, dropout=0.3)
+            else:
+                self.mid_layer = nn.Sequential(
+                    nn.Linear(config.hidden_size, mid_hidden_size),
+                    nn.ReLU(),
+                    nn.Dropout(0.3),
+                )
 
-            self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+            self.classifier = nn.Linear(mid_hidden_size, config.num_labels)
             self.crf = CRF(num_tags=config.num_labels, batch_first=True)
             
             if hasattr(config, 'use_task_id') and config.use_task_id and model_type == "ernie":
@@ -65,6 +68,10 @@ def get_auto_crf_ner_model(model_type: str = "bert"):
 
             outputs = self.bert(input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
             sequence_output = self.dropout(outputs[0])
+            if self.use_lstm:
+                sequence_output, _ = self.mid_layer(sequence_output)
+            else:
+                sequence_output = self.mid_layer(sequence_output)
             logits = self.classifier(sequence_output)
 
             loss, predictions = None, None

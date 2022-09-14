@@ -4,12 +4,18 @@ from transformers.file_utils import ModelOutput
 from dataclasses import dataclass
 from transformers import BertModel, BertPreTrainedModel
 from transformers.models.roformer.modeling_roformer import RoFormerModel, RoFormerPreTrainedModel
+from transformers.models.nezha.modeling_nezha import NezhaModel, NezhaPreTrainedModel
+from transformers.models.albert.modeling_albert import AlbertModel, AlbertPreTrainedModel
+from transformers.models.xlnet.modeling_xlnet import XLNetModel, XLNetPreTrainedModel
 
 
 MODEL_MAP = {
     "bert": (BertModel, BertPreTrainedModel),
     "ernie": (BertModel, BertPreTrainedModel),
-    "roformer": (RoFormerModel, RoFormerPreTrainedModel)
+    "roformer": (RoFormerModel, RoFormerPreTrainedModel),
+    "nezha": (NezhaModel, NezhaPreTrainedModel),
+    "albert": (AlbertModel, AlbertPreTrainedModel),
+    "xlnet": (XLNetModel, XLNetPreTrainedModel),
 }
 
 

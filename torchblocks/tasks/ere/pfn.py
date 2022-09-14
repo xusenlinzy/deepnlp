@@ -10,6 +10,19 @@ def get_auto_pfn_re_model(model_type: str = "bert"):
     base_model, parent_model = MODEL_MAP[model_type]
 
     class PFN(parent_model):
+        """
+        基于`BERT`的`PFN`关系抽取模型
+        + 📖 一般的联合抽取模型将实体抽取和关系分类分成两步进行，忽略了两个任务之间的联系
+        + 📖 该模型通过分组过滤机制，将隐藏状态分成实体抽取信息、关系抽取信息和共享信息三部分
+        + 📖 基于实体抽取信息和共享信息抽取出主语和宾语，基于关系抽取信息和共享信息抽取出对应的关系
+
+        Args:
+            `config`: 模型的配置
+
+        Reference:
+            ⭐️ [A Partition Filter Network for Joint Entity and Relation Extraction.](https://aclanthology.org/2021.emnlp-main.17.pdf)
+            🚀 [Code](https://github.com/Coopercoppers/PFN)
+        """
         def __init__(self, config):
             super().__init__(config)
             self.config = config

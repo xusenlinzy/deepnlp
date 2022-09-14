@@ -1,12 +1,17 @@
-# deepnlp
+<div align="center">
 
-基于 `pytorch` 框架实现 `nlp` 各类任务的解决方案
+**基于 `pytorch` 和 `transformers` 框架实现 `NLP` 各类任务的 `SOTA`**
 
-# nlp任务
+</div>
+
+---
 
 ## 文本分类
 
 ### 1. 将训练数据转换为如下的 `json` 格式
+
+<details>
+<summary>训练数据示例</summary>
 
 ```json
 {
@@ -14,6 +19,8 @@
   "label": "news_military"
 }
 ```
+
+</details>
 
 **训练数据包含两个文件**：`train.json` 和 `dev.json`。
 
@@ -28,16 +35,19 @@
 ### 3. 模型预测
 
 ```python
-from torchblocks.tasks.tc import TextClassificationPipeline
+>>> from torchblocks.tasks.tc import TextClassificationPipeline
 
-pipline = TextClassificationPipeline("my_bert_model_path", model_name="fc", model_type="bert")
-text = "以色列大规模空袭开始！伊朗多个军事目标遭遇打击，誓言对等反击"
-print(pipline(text))
+>>> pipline = TextClassificationPipeline("my_bert_model_path", model_name="fc", model_type="bert")
+>>> text = "以色列大规模空袭开始！伊朗多个军事目标遭遇打击，誓言对等反击"
+>>> print(pipline(text))
 ```
 
 ## 命名实体识别
 
 ### 1. 将训练数据转换为如下的 `json` 格式
+
+<details>
+<summary>训练数据示例</summary>
 
 ```json
 {
@@ -60,6 +70,7 @@ print(pipline(text))
   ]
 }
 ```
+</details>
 
 **训练数据包含两个文件**：`train.json` 和 `dev.json`。
 
@@ -81,17 +92,20 @@ print(pipline(text))
 ### 3. 模型预测
 
 ```python
-from pprint import pprint
-from torchblocks.tasks.ner import NERPipeline
+>>> from pprint import pprint
+>>> from torchblocks.tasks.ner import NERPipeline
 
-pipline = NERPipeline("my_bert_model_path", model_name="crf", model_type="bert")
-text = "结果上周六他们主场0：3惨败给了中游球队瓦拉多利德，近7个多月以来西甲首次输球。"
-pprint(pipline(text))
+>>> pipline = NERPipeline("my_bert_model_path", model_name="crf", model_type="bert")
+>>> text = "结果上周六他们主场0：3惨败给了中游球队瓦拉多利德，近7个多月以来西甲首次输球。"
+>>> pprint(pipline(text))
 ```
 
 ## 实体关系抽取
 
 ### 1. 将训练数据转换为如下的 `json` 格式
+
+<details>
+<summary>训练数据示例</summary>
 
 ```json
 {
@@ -115,6 +129,8 @@ pprint(pipline(text))
 }
 ```
 
+</details>
+
 **训练数据包含两个文件**：`train.json` 和 `dev.json`。
 
 ### 2. 通过运行 [`bash`](./examples/re/re.sh) 命令进行模型微调
@@ -132,10 +148,10 @@ pprint(pipline(text))
 ### 3. 模型预测
 
 ```python
-from pprint import pprint
-from torchblocks.tasks.ere import REPipeline
+>>> from pprint import pprint
+>>> from torchblocks.tasks.ere import REPipeline
 
-pipline = REPipeline("my_bert_model_path", model_name="gplinker", model_type="bert")
-text = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部。"
-pprint(pipline(text))
+>>> pipline = REPipeline("my_bert_model_path", model_name="gplinker", model_type="bert")
+>>> text = "查尔斯·阿兰基斯（Charles Aránguiz），1989年4月17日出生于智利圣地亚哥，智利职业足球运动员，司职中场，效力于德国足球甲级联赛勒沃库森足球俱乐部。"
+>>> pprint(pipline(text))
 ```
